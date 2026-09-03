@@ -14,6 +14,9 @@ from pathlib import Path
 
 import qrcode
 from qrcode.constants import ERROR_CORRECT_H
+from qrcode.image.styledpil import StyledPilImage
+from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
+from qrcode.image.styles.colormasks import SolidFillColorMask
 from PIL import Image, ImageDraw, ImageFont
 
 # --- A4 @ 300 DPI ---------------------------------------------------------
@@ -23,7 +26,8 @@ A4_W, A4_H = 2480, 3508  # pixels
 # Colours
 WHITE = (255, 255, 255)
 INK = (28, 28, 30)
-WA_GREEN = (37, 211, 102)  # WhatsApp brand green
+WA_GREEN = (37, 211, 102)  # WhatsApp brand green (bright)
+WA_GREEN_DARK = (7, 94, 84)  # WhatsApp dark teal-green (high contrast on white)
 
 # Font candidates (first that exists wins)
 _BOLD_FONTS = [
@@ -78,7 +82,21 @@ def _pretty_number(msisdn: str) -> str:
     return f"+{d}"
 
 
-def _make_qr(data: str, box_size: int = 20, border: int = 2) -> Image.Image:
+def _make_qr(
+    data: str,
+    box_size: int = 20,
+    border: int = 2,
+    style: str = "plain",
+    fill_rgb: tuple[int, int, int] = (0, 0, 0),
+    logo_path: str | None = None,
+) -> Image.Image:
+    """Render the QR.
+
+    style="plain"    -> classic black squares (most robust).
+    style="branded"  -> rounded modules in `fill_rgb`, optional centre logo.
+                        Uses level-H error correction so a modest centre logo
+                        stays scannable. ALWAYS test-scan before printing.
+    """
     qr = qrcode.QRCode(
         error_correction=ERROR_CORRECT_H,  # tolerant -> scans big & reliably
         box_size=box_size,
@@ -86,7 +104,24 @@ def _make_qr(data: str, box_size: int = 20, border: int = 2) -> Image.Image:
     )
     qr.add_data(data)
     qr.make(fit=True)
-    return qr.make_image(fill_color="black", back_color="white").convert("RGB")
+
+    if style == "plain":
+        return qr.make_image(fill_color="black", back_color="white").convert("RGB")
+
+    if style == "branded":
+        kwargs = dict(
+            image_factory=StyledPilImage,
+            module_drawer=RoundedModuleDrawer(),
+            color_mask=SolidFillColorMask(
+                front_color=fill_rgb, back_color=(255, 255, 255)
+            ),
+        )
+        # Only embed a logo if one is supplied and exists.
+        if logo_path and Path(logo_path).exists():
+            kwargs["embeded_image_path"] = logo_path  # note: lib's spelling
+        return qr.make_image(**kwargs).convert("RGB")
+
+    raise ValueError(f"Unknown style: {style!r} (use 'plain' or 'branded')")
 
 
 def _fit_logo(logo: Image.Image, max_w: int, max_h: int) -> Image.Image:
@@ -116,8 +151,13 @@ def make_poster(
     logo_path: str | None,
     out_path: str,
     message: str | None = None,
+    style: str = "plain",
 ) -> str:
     """Build an A4 WhatsApp poster and save it (PNG or PDF by extension).
+
+    style="plain"   -> classic black QR (most robust for print).
+    style="branded" -> rounded WhatsApp-green modules + centre logo.
+                       Test-scan before printing a run.
 
     Returns the output path.
     """
@@ -146,9 +186,17 @@ def make_poster(
     y += 120
 
     # --- QR code (the hero) ---
-    qr = _make_qr(url)
+    qr = _make_qr(
+        url,
+        style=style,
+        fill_rgb=WA_GREEN_DARK,   # darker green keeps contrast high for scanning
+        logo_path=logo_path,
+    )
     qr_size = min(A4_W - 2 * margin, 1750)
-    qr = qr.resize((qr_size, qr_size), Image.NEAREST)  # crisp module edges
+    # Plain squares: NEAREST keeps edges crisp. Branded rounded modules: LANCZOS
+    # keeps the curves smooth instead of aliasing them into blocks.
+    resample = Image.NEAREST if style == "plain" else Image.LANCZOS
+    qr = qr.resize((qr_size, qr_size), resample)
     qx = cx - qr_size // 2
     canvas.paste(qr, (qx, y))
     y += qr_size + 110
@@ -184,18 +232,13 @@ if __name__ == "__main__":
     from make_demo_logo import make_demo_logo
 
     logo = make_demo_logo("demo_logo.png")
-    png = make_poster(
+    common = dict(
         pharmacy_name="Sunrise Community Pharmacy",
         msisdn="+27 82 123 4567",  # fake test number
         logo_path=logo,
-        out_path="output/sunrise_poster.png",
         message="Hi Sunrise Pharmacy, I'd like to ask about a prescription.",
     )
-    pdf = make_poster(
-        pharmacy_name="Sunrise Community Pharmacy",
-        msisdn="+27 82 123 4567",
-        logo_path=logo,
-        out_path="output/sunrise_poster.pdf",
-        message="Hi Sunrise Pharmacy, I'd like to ask about a prescription.",
-    )
-    print("Wrote:", png, "and", pdf)
+    for style in ("plain", "branded"):
+        make_poster(out_path=f"output/sunrise_{style}.png", style=style, **common)
+        make_poster(out_path=f"output/sunrise_{style}.pdf", style=style, **common)
+        print(f"Wrote: output/sunrise_{style}.png and .pdf")

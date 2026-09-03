@@ -22,8 +22,21 @@ make_poster(
     logo_path="demo_logo.png",          # PNG (transparency ok), or None
     out_path="output/poster.png",       # .png or .pdf by extension
     message="Hi, I'd like to ask about a prescription.",  # optional prefill
+    style="branded",                    # "plain" (default) or "branded"
 )
 ```
+
+### Styles
+
+- `style="plain"` — classic black square QR. Most robust for print/scan.
+- `style="branded"` — rounded WhatsApp dark-green modules + your logo in the
+  centre (uses level-H error correction so the logo stays scannable). A more
+  distinctive look. **Always test-scan a branded code on a couple of phones
+  before printing a run** — colour + centre logo eat into scan margin.
+
+Both styles are produced by the `qrcode` library (python-qrcode) with no extra
+dependency. The corner "eyes" stay square — custom eye shapes / full artistic
+codes would need a different tool.
 
 ## Demo
 
