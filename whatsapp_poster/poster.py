@@ -88,13 +88,13 @@ def _make_qr(
     border: int = 2,
     style: str = "plain",
     fill_rgb: tuple[int, int, int] = (0, 0, 0),
-    logo_path: str | None = None,
+    center_image: Image.Image | None = None,
 ) -> Image.Image:
     """Render the QR.
 
     style="plain"    -> classic black squares (most robust).
-    style="branded"  -> rounded modules in `fill_rgb`, optional centre logo.
-                        Uses level-H error correction so a modest centre logo
+    style="branded"  -> rounded modules in `fill_rgb`, optional centre image.
+                        Uses level-H error correction so a modest centre icon
                         stays scannable. ALWAYS test-scan before printing.
     """
     qr = qrcode.QRCode(
@@ -116,9 +116,8 @@ def _make_qr(
                 front_color=fill_rgb, back_color=(255, 255, 255)
             ),
         )
-        # Only embed a logo if one is supplied and exists.
-        if logo_path and Path(logo_path).exists():
-            kwargs["embeded_image_path"] = logo_path  # note: lib's spelling
+        if center_image is not None:
+            kwargs["embedded_image"] = center_image
         return qr.make_image(**kwargs).convert("RGB")
 
     raise ValueError(f"Unknown style: {style!r} (use 'plain' or 'branded')")
@@ -128,6 +127,63 @@ def _fit_logo(logo: Image.Image, max_w: int, max_h: int) -> Image.Image:
     logo = logo.convert("RGBA")
     logo.thumbnail((max_w, max_h), Image.LANCZOS)
     return logo
+
+
+def _make_chat_icon(size: int = 400) -> Image.Image:
+    """Draw a generic WhatsApp-style chat icon: green circle + speech bubble.
+
+    Hand-drawn placeholder (not the trademarked WhatsApp logo asset) so the
+    QR centre reads as "message us" at a glance.
+    """
+    scale = 4  # supersample for smooth edges, then downscale
+    s = size * scale
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+
+    d.ellipse([0, 0, s - 1, s - 1], fill=WA_GREEN)
+
+    # White speech bubble with a small tail, roughly centred.
+    bw, bh = int(s * 0.62), int(s * 0.5)
+    bx, by = (s - bw) // 2, int(s * 0.22)
+    radius = int(bh * 0.35)
+    d.rounded_rectangle([bx, by, bx + bw, by + bh], radius=radius, fill=(255, 255, 255))
+    tail = [
+        (bx + bw * 0.28, by + bh - 2),
+        (bx + bw * 0.16, by + bh + int(bh * 0.28)),
+        (bx + bw * 0.5, by + bh - 2),
+    ]
+    d.polygon(tail, fill=(255, 255, 255))
+
+    # Three small dots inside the bubble (generic "chat" motif).
+    dot_r = int(bh * 0.09)
+    cy = by + bh // 2
+    for i, frac in enumerate((0.32, 0.5, 0.68)):
+        cx_dot = bx + int(bw * frac)
+        d.ellipse(
+            [cx_dot - dot_r, cy - dot_r, cx_dot + dot_r, cy + dot_r],
+            fill=WA_GREEN,
+        )
+
+    return img.resize((size, size), Image.LANCZOS)
+
+
+def _fit_font(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    candidates: list[str],
+    max_width: int,
+    start_size: int,
+    min_size: int = 50,
+) -> ImageFont.FreeTypeFont:
+    """Largest font (<= start_size) whose rendered `text` fits `max_width`."""
+    size = start_size
+    while size > min_size:
+        font = _load_font(candidates, size)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            return font
+        size -= 6
+    return _load_font(candidates, min_size)
 
 
 def _draw_centered(
@@ -168,29 +224,37 @@ def make_poster(
     cx = A4_W // 2
     margin = 200
 
-    name_font = _load_font(_BOLD_FONTS, 150)
     cta_font = _load_font(_BOLD_FONTS, 110)
     phone_font = _load_font(_BOLD_FONTS, 180)
     sub_font = _load_font(_REG_FONTS, 70)
 
     y = margin
 
-    # --- Header: logo then pharmacy name ---
+    # --- Header: pharmacy name top-centre, logo small in top-right corner ---
+    logo_h = 0
+    logo_reserve = 0
     if logo_path and Path(logo_path).exists():
-        logo = _fit_logo(Image.open(logo_path), max_w=A4_W - 2 * margin, max_h=520)
-        lx = cx - logo.width // 2
+        # Half the previous size (was max_h=520), tucked into the corner.
+        logo = _fit_logo(Image.open(logo_path), max_w=350, max_h=260)
+        lx = A4_W - margin - logo.width
         canvas.paste(logo, (lx, y), logo)
-        y += logo.height + 90
+        logo_h = logo.height
+        logo_reserve = logo.width + 60  # gap between name and logo
 
-    y = _draw_centered(draw, pharmacy_name, name_font, cx, y)
-    y += 120
+    # Keep the centred name clear of the corner logo on BOTH sides, so it
+    # stays visually centred rather than drifting toward the free side.
+    name_max_width = A4_W - 2 * margin - 2 * logo_reserve
+    name_font = _fit_font(draw, pharmacy_name, _BOLD_FONTS, name_max_width, 150)
+
+    name_bottom = _draw_centered(draw, pharmacy_name, name_font, cx, y)
+    y = max(name_bottom, y + logo_h) + 120
 
     # --- QR code (the hero) ---
     qr = _make_qr(
         url,
         style=style,
         fill_rgb=WA_GREEN_DARK,   # darker green keeps contrast high for scanning
-        logo_path=logo_path,
+        center_image=_make_chat_icon() if style == "branded" else None,
     )
     qr_size = min(A4_W - 2 * margin, 1750)
     # Plain squares: NEAREST keeps edges crisp. Branded rounded modules: LANCZOS

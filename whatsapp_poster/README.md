@@ -1,7 +1,8 @@
 # Pharmacy WhatsApp Posters
 
 Generate an A4 poster with a large QR code that opens a WhatsApp chat with a
-pharmacy. Pharmacy name + logo on top, phone number below.
+pharmacy. Pharmacy name top-centre, logo small in the top-right corner, phone
+number below the QR code.
 
 Prototype — runs fully offline, public libraries only.
 
@@ -29,10 +30,15 @@ make_poster(
 ### Styles
 
 - `style="plain"` — classic black square QR. Most robust for print/scan.
-- `style="branded"` — rounded WhatsApp dark-green modules + your logo in the
-  centre (uses level-H error correction so the logo stays scannable). A more
-  distinctive look. **Always test-scan a branded code on a couple of phones
-  before printing a run** — colour + centre logo eat into scan margin.
+- `style="branded"` — rounded WhatsApp dark-green modules + a generic chat-
+  bubble icon in the centre (hand-drawn placeholder, not the WhatsApp
+  trademarked logo asset) using level-H error correction so the icon stays
+  scannable. A more distinctive look. **Always test-scan a branded code on a
+  couple of phones before printing a run** — colour + centre icon eat into
+  scan margin.
+
+The pharmacy name auto-shrinks to fit between the two margins reserved for the
+corner logo, so a long name never collides with it.
 
 Both styles are produced by the `qrcode` library (python-qrcode) with no extra
 dependency. The corner "eyes" stay square — custom eye shapes / full artistic
