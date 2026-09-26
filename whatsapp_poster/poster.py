@@ -206,6 +206,7 @@ def make_poster(
     out_path: str,
     message: str | None = None,
     style: str = "plain",
+    cta_text: str = "Scan to chat with us on WhatsApp",
 ) -> str:
     """Build an A4 WhatsApp poster and save it (PNG or PDF by extension).
 
@@ -222,7 +223,6 @@ def make_poster(
     cx = A4_W // 2
     margin = 200
 
-    cta_font = _load_font(_BOLD_FONTS, 110)
     phone_font = _load_font(_BOLD_FONTS, 180)
     sub_font = _load_font(_REG_FONTS, 70)
 
@@ -264,9 +264,8 @@ def make_poster(
     y += qr_size + 110
 
     # --- Footer: CTA + number ---
-    y = _draw_centered(
-        draw, "Scan to chat with us on WhatsApp", cta_font, cx, y, fill=WA_GREEN
-    )
+    cta_font = _fit_font(draw, cta_text, _BOLD_FONTS, A4_W - 2 * margin, 110)
+    y = _draw_centered(draw, cta_text, cta_font, cx, y, fill=WA_GREEN)
     y += 70
     y = _draw_centered(draw, _pretty_number(msisdn), phone_font, cx, y)
     y += 50
