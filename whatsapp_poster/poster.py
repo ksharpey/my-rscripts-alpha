@@ -9,9 +9,11 @@ Public libraries only: qrcode (+ Pillow). Runs fully offline.
 
 from __future__ import annotations
 
+import io
 import re
 from pathlib import Path
 
+import cairosvg
 import qrcode
 from qrcode.constants import ERROR_CORRECT_H
 from qrcode.image.styledpil import StyledPilImage
@@ -129,40 +131,36 @@ def _fit_logo(logo: Image.Image, max_w: int, max_h: int) -> Image.Image:
     return logo
 
 
-def _make_chat_icon(size: int = 400) -> Image.Image:
-    """Draw a generic WhatsApp-style chat icon: green circle + speech bubble.
+_WA_GLYPH_SVG = Path(__file__).parent / "assets" / "whatsapp_glyph.svg"
 
-    Hand-drawn placeholder (not the trademarked WhatsApp logo asset) so the
-    QR centre reads as "message us" at a glance.
+
+def _make_whatsapp_badge(
+    size: int = 400,
+    bg_rgb: tuple[int, int, int] = WA_GREEN,
+    corner_radius_frac: float = 0.22,
+) -> Image.Image:
+    """The official WhatsApp glyph, white, on a green rounded-square badge.
+
+    This is WhatsApp's trademarked brand mark (glyph sourced from the
+    simple-icons project, an MIT-licensed vector trace of the official
+    icon) -- use only where you have permission from WhatsApp/Meta to
+    display it. Requires `cairosvg` to rasterize the SVG.
     """
     scale = 4  # supersample for smooth edges, then downscale
     s = size * scale
+
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
+    d.rounded_rectangle([0, 0, s - 1, s - 1], radius=int(s * corner_radius_frac), fill=bg_rgb)
 
-    d.ellipse([0, 0, s - 1, s - 1], fill=WA_GREEN)
-
-    # White speech bubble with a small tail, roughly centred.
-    bw, bh = int(s * 0.62), int(s * 0.5)
-    bx, by = (s - bw) // 2, int(s * 0.22)
-    radius = int(bh * 0.35)
-    d.rounded_rectangle([bx, by, bx + bw, by + bh], radius=radius, fill=(255, 255, 255))
-    tail = [
-        (bx + bw * 0.28, by + bh - 2),
-        (bx + bw * 0.16, by + bh + int(bh * 0.28)),
-        (bx + bw * 0.5, by + bh - 2),
-    ]
-    d.polygon(tail, fill=(255, 255, 255))
-
-    # Three small dots inside the bubble (generic "chat" motif).
-    dot_r = int(bh * 0.09)
-    cy = by + bh // 2
-    for i, frac in enumerate((0.32, 0.5, 0.68)):
-        cx_dot = bx + int(bw * frac)
-        d.ellipse(
-            [cx_dot - dot_r, cy - dot_r, cx_dot + dot_r, cy + dot_r],
-            fill=WA_GREEN,
-        )
+    svg_markup = _WA_GLYPH_SVG.read_text().replace("<svg ", '<svg fill="white" ', 1)
+    glyph_size = int(s * 0.62)
+    glyph_png = cairosvg.svg2png(
+        bytestring=svg_markup.encode(), output_width=glyph_size, output_height=glyph_size
+    )
+    glyph = Image.open(io.BytesIO(glyph_png)).convert("RGBA")
+    gx, gy = (s - glyph.width) // 2, (s - glyph.height) // 2
+    img.paste(glyph, (gx, gy), glyph)
 
     return img.resize((size, size), Image.LANCZOS)
 
@@ -254,7 +252,7 @@ def make_poster(
         url,
         style=style,
         fill_rgb=WA_GREEN_DARK,   # darker green keeps contrast high for scanning
-        center_image=_make_chat_icon() if style == "branded" else None,
+        center_image=_make_whatsapp_badge() if style == "branded" else None,
     )
     qr_size = min(A4_W - 2 * margin, 1750)
     # Plain squares: NEAREST keeps edges crisp. Branded rounded modules: LANCZOS

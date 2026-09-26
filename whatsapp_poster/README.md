@@ -9,7 +9,7 @@ Prototype — runs fully offline, public libraries only.
 ## Install
 
 ```bash
-pip install "qrcode[pil]" Pillow
+pip install "qrcode[pil]" Pillow cairosvg
 ```
 
 ## Use
@@ -30,19 +30,27 @@ make_poster(
 ### Styles
 
 - `style="plain"` — classic black square QR. Most robust for print/scan.
-- `style="branded"` — rounded WhatsApp dark-green modules + a generic chat-
-  bubble icon in the centre (hand-drawn placeholder, not the WhatsApp
-  trademarked logo asset) using level-H error correction so the icon stays
-  scannable. A more distinctive look. **Always test-scan a branded code on a
-  couple of phones before printing a run** — colour + centre icon eat into
-  scan margin.
+- `style="branded"` — rounded WhatsApp dark-green modules + the **official
+  WhatsApp logo** (green rounded-square badge with the white glyph) in the
+  centre, using level-H error correction so the logo stays scannable. A more
+  distinctive look. **Always test-scan a branded code on a couple of phones
+  before printing a run** — colour + centre logo eat into scan margin.
+
+  ⚠️ The WhatsApp logo is a **Meta/WhatsApp trademark**. Only use `style=
+  "branded"` where you have permission to display it, and follow WhatsApp's
+  brand guidelines (correct colour, don't distort or recolour the glyph,
+  keep clear space around it) — see https://www.whatsappbrand.com/. The
+  glyph itself lives at `assets/whatsapp_glyph.svg` (vector trace from the
+  MIT-licensed simple-icons project); swap that file if you have an
+  official asset from Meta instead.
 
 The pharmacy name auto-shrinks to fit between the two margins reserved for the
 corner logo, so a long name never collides with it.
 
 Both styles are produced by the `qrcode` library (python-qrcode) with no extra
-dependency. The corner "eyes" stay square — custom eye shapes / full artistic
-codes would need a different tool.
+dependency beyond `cairosvg` (used to rasterize the WhatsApp glyph). The
+corner "eyes" stay square — custom eye shapes / full artistic codes would
+need a different tool.
 
 ## Demo
 
@@ -65,5 +73,4 @@ South African number, and a generated placeholder logo (`make_demo_logo.py`).
 ## TODO (not-yet-perfect)
 
 - Batch mode (CSV of pharmacies → many posters).
-- Real logo embedded in the QR centre (optional, needs a scan re-check).
 - Font/colour theming per brand.
