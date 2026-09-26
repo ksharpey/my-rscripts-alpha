@@ -62,6 +62,23 @@ def normalize_msisdn(msisdn: str) -> str:
     return digits
 
 
+def to_international(number: str, default_country_code: str = "27") -> str:
+    """Best-effort local -> international conversion for the CLI.
+
+    - "+27 82 123 4567"  -> "27821234567"   (already has a +, trust it)
+    - "066 164 9783"     -> "27661649783"   (leading 0 -> country code)
+    - "27821234567"      -> "27821234567"   (already looks international)
+    """
+    digits = re.sub(r"\D", "", number)
+    if number.strip().startswith("+"):
+        return digits
+    if digits.startswith("0"):
+        return default_country_code + digits[1:]
+    if digits.startswith(default_country_code):
+        return digits
+    return default_country_code + digits
+
+
 def whatsapp_url(msisdn: str, message: str | None = None) -> str:
     url = f"https://wa.me/{normalize_msisdn(msisdn)}"
     if message:
@@ -288,8 +305,56 @@ def make_poster(
     return str(out)
 
 
-if __name__ == "__main__":
-    # Prototype demo: fake pharmacy + fake South African number.
+def _slugify(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug or "poster"
+
+
+def _build_arg_parser():
+    import argparse
+
+    p = argparse.ArgumentParser(
+        description="Generate an A4 WhatsApp poster for a pharmacy. Runs fully "
+        "offline once installed -- no Claude/AI needed for repeat use."
+    )
+    p.add_argument("--name", help="Pharmacy name (required unless --demo)")
+    p.add_argument(
+        "--number",
+        help="Phone number, local or international, e.g. '066 164 9783' or "
+        "'+27 66 164 9783' (required unless --demo)",
+    )
+    p.add_argument("--logo", default=None, help="Path to a logo image (PNG, transparency ok)")
+    p.add_argument(
+        "--cta",
+        default="Scan to chat with us on WhatsApp",
+        help="Green call-to-action text above the phone number",
+    )
+    p.add_argument("--message", default=None, help="Optional prefilled WhatsApp message")
+    p.add_argument(
+        "--style", choices=["plain", "branded"], default="branded", help="QR code style"
+    )
+    p.add_argument(
+        "--country-code",
+        default="27",
+        help="Country code to assume for a local (0-prefixed) number (default: 27, South Africa)",
+    )
+    p.add_argument("--out-dir", default="output", help="Directory to write into")
+    p.add_argument(
+        "--formats",
+        nargs="+",
+        choices=["png", "pdf"],
+        default=["png", "pdf"],
+        help="File format(s) to generate (default: both)",
+    )
+    p.add_argument(
+        "--demo",
+        action="store_true",
+        help="Ignore all other args and generate the built-in demo poster (fake pharmacy)",
+    )
+    return p
+
+
+def _run_demo() -> None:
     from make_demo_logo import make_demo_logo
 
     logo = make_demo_logo("demo_logo.png")
@@ -303,3 +368,28 @@ if __name__ == "__main__":
         make_poster(out_path=f"output/sunrise_{style}.png", style=style, **common)
         make_poster(out_path=f"output/sunrise_{style}.pdf", style=style, **common)
         print(f"Wrote: output/sunrise_{style}.png and .pdf")
+
+
+if __name__ == "__main__":
+    parser = _build_arg_parser()
+    args = parser.parse_args()
+
+    if args.demo:
+        _run_demo()
+    else:
+        if not args.name or not args.number:
+            parser.error("--name and --number are required unless --demo is set")
+        msisdn = to_international(args.number, args.country_code)
+        slug = _slugify(args.name)
+        out_dir = Path(args.out_dir)
+        for fmt in args.formats:
+            out_path = make_poster(
+                pharmacy_name=args.name,
+                msisdn=msisdn,
+                logo_path=args.logo,
+                out_path=str(out_dir / f"{slug}.{fmt}"),
+                message=args.message,
+                style=args.style,
+                cta_text=args.cta,
+            )
+            print(f"Wrote: {out_path}")
